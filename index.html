@@ -5,52 +5,28 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Voice Timesheet Entry (External)</title>
   <style>
-    body { font-family: Arial, sans-serif; margin: 12px; max-width: 760px; color: #222; }
+    body { font-family: Arial, sans-serif; margin: 12px; max-width: 860px; color: #222; }
     h2 { margin: 0 0 8px; }
     .row { margin-bottom: 12px; }
     .small { font-size: 12px; color: #666; }
     .status { background:#f5f5f5; border:1px solid #ddd; border-radius:6px; padding:10px; white-space:pre-wrap; }
-    .ok { color: #0b7a0b; }
-    .err { color: #b00020; }
-    .warn { color: #9c6b00; }
+    .ok { color:#0b7a0b; }
+    .err { color:#b00020; }
+    .warn { color:#9c6b00; }
     .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
     .grid3 { display:grid; grid-template-columns:1fr 1fr 1fr; gap:10px; }
-    input, select, textarea, button {
-      font-size: 14px;
-      box-sizing: border-box;
-    }
-    input, select, textarea {
-      width:100%;
-      padding:10px;
-      border:1px solid #c8c8c8;
-      border-radius:6px;
-    }
-    button {
-      padding:10px 12px;
-      margin-right:8px;
-      margin-bottom:8px;
-      border:1px solid #b9b9b9;
-      border-radius:6px;
-      background:#f7f7f7;
-      cursor:pointer;
-    }
+    input, select, textarea, button { font-size: 14px; box-sizing: border-box; }
+    input, select, textarea { width:100%; padding:10px; border:1px solid #c8c8c8; border-radius:6px; }
+    button { padding:10px 12px; margin-right:8px; margin-bottom:8px; border:1px solid #b9b9b9; border-radius:6px; background:#f7f7f7; cursor:pointer; }
     button:disabled { opacity:.5; cursor:not-allowed; }
     label { display:block; font-size:12px; font-weight:600; margin-bottom:4px; }
     audio { width:100%; }
     .debug {
-      font-family: monospace;
-      font-size: 11px;
-      background: #fafafa;
-      border: 1px solid #e2e2e2;
-      border-radius: 6px;
-      padding: 8px;
-      max-height: 200px;
-      overflow: auto;
-      white-space: pre-wrap;
+      font-family: monospace; font-size: 11px; background:#fafafa; border:1px solid #e2e2e2;
+      border-radius:6px; padding:8px; max-height:220px; overflow:auto; white-space:pre-wrap;
     }
     .pill {
-      display:inline-block; font-size:11px; background:#eee;
-      padding:2px 6px; border-radius:12px; margin-right:4px;
+      display:inline-block; font-size:11px; background:#eee; padding:2px 6px; border-radius:12px; margin-right:4px;
     }
   </style>
 </head>
@@ -155,7 +131,7 @@
     /***********************
      * CONFIG (replace this)
      ***********************/
-    const BRIDGE_URL = 'https://script.google.com/macros/s/AKfycby20-_ttBvXnHLg0JT70d2n-9uvyTUT3TdQWp8GfcY/exec?view=bridge';
+    const BRIDGE_URL = 'https://script.google.com/macros/s/AKfycbwcNbQ4sJ3PmWX0aFSmcz42_9fZxlCv0Cf2iIZc69-HsAj41Lw-oJKmJCnnuJ2Qjpmt/exec?view=bridge'; // MUST be /exec, not /dev
     const CHANNEL = 'timesheet-voice-v1';
     const ALLOWED_BRIDGE_ORIGINS = new Set([
       'https://script.google.com',
@@ -186,7 +162,6 @@
       recordStartBtn: document.getElementById('recordStartBtn'),
       recordStopBtn: document.getElementById('recordStopBtn'),
       transcribeBtn: document.getElementById('transcribeBtn'),
-
       parseBtn: document.getElementById('parseBtn'),
       saveBtn: document.getElementById('saveBtn'),
       clearBtn: document.getElementById('clearBtn'),
@@ -248,7 +223,6 @@
       const data = event.data || {};
       if (!data || data.channel !== CHANNEL) return;
 
-      // Only accept messages from allowed Apps Script origins
       if (!ALLOWED_BRIDGE_ORIGINS.has(event.origin)) {
         debug('Ignoring message from unexpected origin: ' + event.origin);
         return;
@@ -272,26 +246,21 @@
       }
 
       if (data.type === 'RESULT') {
-        const entry = pending.get(data.id);
-        if (!entry) {
-          debug('No pending request found for id=' + data.id);
+        const p = pending.get(data.id);
+        if (!p) {
+          debug('No pending request for id=' + data.id);
           return;
         }
         pending.delete(data.id);
 
-        if (data.ok) entry.resolve(data.result);
-        else entry.reject(new Error(data.error || 'Unknown bridge error'));
+        if (data.ok) p.resolve(data.result);
+        else p.reject(new Error(data.error || 'Unknown bridge error'));
       }
     });
 
     function sendHelloToBridge() {
-      if (!els.bridgeFrame.contentWindow) {
-        throw new Error('Bridge iframe not ready');
-      }
-      const msg = { channel: CHANNEL, type: 'HELLO' };
-
-      // We may not know actual origin until first message; '*' is used ONLY for HELLO.
-      els.bridgeFrame.contentWindow.postMessage(msg, '*');
+      if (!els.bridgeFrame.contentWindow) throw new Error('Bridge iframe not ready');
+      els.bridgeFrame.contentWindow.postMessage({ channel: CHANNEL, type: 'HELLO' }, '*');
       debug('HELLO sent to bridge');
     }
 
@@ -300,23 +269,16 @@
         return Promise.reject(new Error('Bridge is not connected yet.'));
       }
       if (!els.bridgeFrame.contentWindow) {
-        return Promise.reject(new Error('Bridge iframe window unavailable.'));
+        return Promise.reject(new Error('Bridge iframe unavailable.'));
       }
 
       const id = String(reqCounter++);
-      const payload = {
-        channel: CHANNEL,
-        type: 'CALL',
-        id,
-        fn,
-        args
-      };
+      const payload = { channel: CHANNEL, type: 'CALL', id, fn, args };
 
       return new Promise((resolve, reject) => {
         pending.set(id, { resolve, reject });
         els.bridgeFrame.contentWindow.postMessage(payload, bridgeOrigin);
 
-        // Timeout so UI doesn't hang forever
         setTimeout(() => {
           if (pending.has(id)) {
             pending.delete(id);
@@ -337,7 +299,7 @@
 
     function stopAllTracks(stream) {
       if (!stream) return;
-      stream.getTracks().forEach(track => track.stop());
+      stream.getTracks().forEach(t => t.stop());
     }
 
     function clearAudioPreview() {
@@ -358,18 +320,12 @@
     }
 
     function pickSupportedAudioMimeType() {
-      const candidates = [
-        'audio/webm;codecs=opus',
-        'audio/webm',
-        'audio/mp4'
-      ];
+      const candidates = ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4'];
       if (!window.MediaRecorder) return '';
       for (const type of candidates) {
         try {
-          if (!MediaRecorder.isTypeSupported || MediaRecorder.isTypeSupported(type)) {
-            return type;
-          }
-        } catch (_) {}
+          if (!MediaRecorder.isTypeSupported || MediaRecorder.isTypeSupported(type)) return type;
+        } catch (e) {}
       }
       return '';
     }
@@ -396,11 +352,11 @@
         els.audioFileInput.value = '';
         clearAudioPreview();
 
-        const preferredMimeType = pickSupportedAudioMimeType();
-        debug('Selected recording MIME type: ' + (preferredMimeType || '(browser default)'));
+        const preferredType = pickSupportedAudioMimeType();
+        debug('Selected recording MIME type: ' + (preferredType || '(browser default)'));
 
-        mediaRecorder = preferredMimeType
-          ? new MediaRecorder(mediaStream, { mimeType: preferredMimeType })
+        mediaRecorder = preferredType
+          ? new MediaRecorder(mediaStream, { mimeType: preferredType })
           : new MediaRecorder(mediaStream);
 
         mediaRecorder.ondataavailable = (event) => {
@@ -411,10 +367,7 @@
         };
 
         mediaRecorder.onerror = (event) => {
-          const errMsg =
-            (event && event.error && event.error.message) ||
-            (event && event.message) ||
-            'unknown recording error';
+          const errMsg = (event && event.error && event.error.message) || event.message || 'unknown recording error';
           setMessage('Recording error. Try file upload fallback.', 'err');
           debug('MediaRecorder error: ' + errMsg);
           setRecordingUI(false);
@@ -455,7 +408,6 @@
         };
 
         mediaRecorder.start();
-
       } catch (err) {
         const name = err && err.name ? err.name : 'Error';
         const msg = err && err.message ? err.message : String(err);
@@ -489,6 +441,7 @@
       try {
         let blobToSend = recordedBlob;
         const uploaded = els.audioFileInput.files && els.audioFileInput.files[0];
+
         if (!blobToSend && uploaded) {
           blobToSend = uploaded;
           debug(`Using uploaded file. size=${uploaded.size}, type=${uploaded.type || 'unknown'}`);
@@ -500,7 +453,7 @@
           return;
         }
 
-        // OpenAI speech-to-text uploads are limited to 25 MB
+        // OpenAI speech-to-text upload limit is 25 MB
         if (blobToSend.size > 25 * 1024 * 1024) {
           setMessage('Audio is larger than 25 MB. Record a shorter clip.', 'err');
           return;
@@ -518,13 +471,9 @@
           model: els.sttModel.value || 'gpt-4o-mini-transcribe'
         });
 
-        if (!res || !res.ok) {
-          throw new Error('Transcription failed.');
-        }
-
+        if (!res || !res.ok) throw new Error('Transcription failed.');
         els.transcript.value = (res.transcript || '').trim();
         setMessage('Transcription complete. Click Parse, then Save Row.', 'ok');
-
       } catch (err) {
         setMessage('Transcription error: ' + err.message, 'err');
         debug('transcribeCurrentAudio failed: ' + err.message);
@@ -540,6 +489,7 @@
       els.activity.value = fields.activity || '';
       els.start.value = fields.start || '';
       els.end.value = fields.end || '';
+
       if (fields.billable) {
         const b = String(fields.billable).toLowerCase();
         if (b === 'yes') els.billable.value = 'Yes';
@@ -594,7 +544,7 @@
         if (res && res.ok) {
           setMessage(res.message || 'Saved.', 'ok');
 
-          // keep date/project/tab to speed repetitive entry
+          // keep tab/date/project for repeated entries
           els.transcript.value = '';
           els.activity.value = '';
           els.start.value = '';
@@ -620,111 +570,4 @@
       els.project.value = '';
       els.activity.value = '';
       els.start.value = '';
-      els.end.value = '';
-      els.billable.value = '';
-
-      recordedBlob = null;
-      recordedChunks = [];
-      els.transcribeBtn.disabled = true;
-
-      clearAudioPreview();
-      els.audioFileInput.value = '';
-
-      if (mediaRecorder && mediaRecorder.state === 'recording') {
-        try { mediaRecorder.stop(); } catch (e) {}
-      }
-      stopAllTracks(mediaStream);
-      mediaStream = null;
-      mediaRecorder = null;
-      setRecordingUI(false);
-
-      setMessage('');
-      debug('Cleared UI and audio state');
-    }
-
-    function onAudioFileSelected() {
-      const file = els.audioFileInput.files && els.audioFileInput.files[0];
-      if (!file) return;
-
-      debug(`Audio file selected: ${file.name || '(unnamed)'} | size=${file.size} | type=${file.type || 'unknown'}`);
-      recordedBlob = null;
-      recordedChunks = [];
-      els.transcribeBtn.disabled = false;
-      showAudioPreviewFromBlob(file);
-      setMessage('Audio file selected. Click "Transcribe Audio".', 'ok');
-    }
-
-    /***********************
-     * Init
-     ***********************/
-    async function loadInitData() {
-      try {
-        const data = await callBridge('getWebAppInitData');
-        populateSheetDropdown(data.sheetNames || [], data.defaultSheetName);
-        els.contextLine.textContent = `Spreadsheet: ${data.spreadsheetName} | TZ: ${data.timezone}`;
-        setMessage('Ready.', 'ok');
-        debug('Init data loaded');
-      } catch (err) {
-        setMessage('Failed to load app data: ' + err.message, 'err');
-        debug('loadInitData failed: ' + err.message);
-      }
-    }
-
-    function initSupportStatus() {
-      const hasMediaDevices = !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia);
-      const hasMediaRecorder = !!window.MediaRecorder;
-
-      if (hasMediaDevices && hasMediaRecorder) {
-        setSupportStatus(
-          'External recording mode enabled. Browser will ask for microphone permission here (not inside Apps Script).',
-          'ok'
-        );
-      } else if (hasMediaDevices && !hasMediaRecorder) {
-        setSupportStatus(
-          'Microphone access exists, but MediaRecorder is unavailable. Use file upload fallback.',
-          'warn'
-        );
-      } else {
-        setSupportStatus(
-          'Browser audio recording is unavailable. Use file upload fallback or another browser.',
-          'err'
-        );
-      }
-    }
-
-    function init() {
-      debug('External page init started');
-
-      initSupportStatus();
-      setupBridgeIframe();
-
-      els.recordStartBtn.addEventListener('click', startRecording);
-      els.recordStopBtn.addEventListener('click', stopRecording);
-      els.transcribeBtn.addEventListener('click', transcribeCurrentAudio);
-      els.parseBtn.addEventListener('click', parseTranscript);
-      els.saveBtn.addEventListener('click', saveRow);
-      els.clearBtn.addEventListener('click', clearAll);
-      els.audioFileInput.addEventListener('change', onAudioFileSelected);
-
-      setRecordingUI(false);
-
-      // Bridge handshake timeout
-      setTimeout(() => {
-        if (!bridgeHandshakeDone) {
-          setMessage(
-            'Bridge connection not established. Check BRIDGE_URL, Apps Script deployment, and ALLOWED_PARENT_ORIGINS.',
-            'err'
-          );
-          debug('Bridge handshake timeout');
-        }
-      }, 10000);
-
-      debug('External page init completed');
-    }
-
-    init();
-  </script>
-</body>
-
-</html>
-
+      els.end.value =
